@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Hứng Vàng</title>
+<title>Hứng Vàng v4 (Copy)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;800&display=swap" rel="stylesheet">
@@ -149,12 +149,13 @@
   // ---------- state ----------
   var state = 'ready'; // ready | play | over
   var score, lives, level, items, spawnTimer, shake, flash, time, floats;
+  var fireworks = [], levelMsg = 0;
   var player = { x: LW / 2, target: LW / 2, y: LH - 92, w: 84, h: 34 };
   var best = 0;
   try { best = parseInt(localStorage.getItem('hungvang_best') || '0', 10) || 0; } catch (e) {}
 
   function reset() {
-    score = 0; lives = 3; level = 1; items = []; floats = []; spawnTimer = 0.4; shake = 0; flash = 0;
+    score = 0; lives = 3; level = 1; items = []; floats = []; fireworks = []; levelMsg = 0; spawnTimer = 0.4; shake = 0; flash = 0;
     player.x = player.target = LW / 2;
     updateHud();
   }
@@ -265,7 +266,12 @@
           var pts = it.type === 'diamond' ? 100 : it.type === 'gold' ? 50 : 10;
           score += pts;
           var nl = calcLevel(score);
-          if (nl !== level) { level = nl; beep(1200, 0.25, 'triangle', 0.07); }
+          if (nl !== level) {
+            level = nl;
+            beep(1200, 0.25, 'triangle', 0.07);
+            spawnFireworks();
+            levelMsg = 2.5; // show message for 2.5 seconds
+          }
           if (it.type === 'diamond') { beep(1320, 0.15, 'sine', 0.08); beep(1760, 0.12, 'sine', 0.06); }
           else if (it.type === 'gold') beep(1050, 0.1, 'sine', 0.07);
           else beep(880, 0.08, 'sine', 0.06);
@@ -286,11 +292,50 @@
 
     if (shake > 0) shake -= dt;
     if (flash > 0) flash -= dt;
+    if (levelMsg > 0) levelMsg -= dt;
     for (var j = floats.length - 1; j >= 0; j--) {
       floats[j].life -= dt;
       floats[j].y -= 60 * dt;
       if (floats[j].life <= 0) floats.splice(j, 1);
     }
+    // update firework particles
+    for (var k = fireworks.length - 1; k >= 0; k--) {
+      var p = fireworks[k];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 120 * dt; // gravity
+      p.life -= dt;
+      if (p.life <= 0) fireworks.splice(k, 1);
+    }
+  }
+
+  // ---------- fireworks ----------
+  var fwColors = ['#f2a541','#7fdbff','#ff6b6b','#51e898','#c792ea','#ff9ff3','#ffeaa7','#fd79a8'];
+  function spawnFireworks() {
+    // 3 bursts at random positions
+    for (var b = 0; b < 3; b++) {
+      var cx = 60 + Math.random() * (LW - 120);
+      var cy = 80 + Math.random() * 200;
+      var color = fwColors[Math.floor(Math.random() * fwColors.length)];
+      var count = 25 + Math.floor(Math.random() * 15);
+      for (var i = 0; i < count; i++) {
+        var angle = Math.random() * 6.283;
+        var speed = 60 + Math.random() * 140;
+        fireworks.push({
+          x: cx, y: cy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 40,
+          life: 0.6 + Math.random() * 0.8,
+          maxLife: 1.4,
+          r: 1.5 + Math.random() * 2,
+          color: color
+        });
+      }
+    }
+    // celebration sounds
+    setTimeout(function(){ beep(1400, 0.12, 'sine', 0.05); }, 0);
+    setTimeout(function(){ beep(1700, 0.12, 'sine', 0.05); }, 100);
+    setTimeout(function(){ beep(2100, 0.15, 'sine', 0.06); }, 200);
   }
 
   function gameOver() {
@@ -523,6 +568,55 @@
     }
   }
 
+  function drawFireworks() {
+    for (var i = 0; i < fireworks.length; i++) {
+      var p = fireworks[i];
+      var alpha = Math.max(0, p.life / p.maxLife);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      // glow
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * alpha, 0, 6.283);
+      ctx.fill();
+      // trail
+      ctx.globalAlpha = alpha * 0.3;
+      ctx.beginPath();
+      ctx.arc(p.x - p.vx * 0.02, p.y - p.vy * 0.02, p.r * 0.6, 0, 6.283);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawLevelMsg() {
+    if (levelMsg <= 0) return;
+    ctx.save();
+    var alpha = Math.min(1, levelMsg / 0.5); // fade out in last 0.5s
+    ctx.globalAlpha = alpha;
+
+    // banner background
+    var bh = 70, by = LH * 0.32;
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.beginPath();
+    ctx.roundRect(30, by, LW - 60, bh, 16);
+    ctx.fill();
+
+    // level up text
+    ctx.fillStyle = '#f2a541';
+    ctx.font = 'bold 22px "Be Vietnam Pro", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('⭐ Cấp ' + level + ' ⭐', LW / 2, by + 24);
+
+    // motivation text
+    ctx.fillStyle = '#f6efe0';
+    ctx.font = '500 14px "Be Vietnam Pro", sans-serif';
+    ctx.fillText('Sắp đến phần thưởng rồi, cố lên!', LW / 2, by + 50);
+
+    ctx.restore();
+  }
+
   function drawRock(it) {
     ctx.save();
     ctx.translate(it.x, it.y);
@@ -553,6 +647,8 @@
     }
     drawBasket();
     drawFloats();
+    drawFireworks();
+    drawLevelMsg();
     ctx.restore();
     if (flash > 0) {
       ctx.fillStyle = 'rgba(200,64,47,' + (flash * 1.4) + ')';
