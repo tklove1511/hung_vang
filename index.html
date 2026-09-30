@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Hứng Vàng v4 (Copy)</title>
+<title>Hứng Vàng</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;800&display=swap" rel="stylesheet">
@@ -155,7 +155,7 @@
   try { best = parseInt(localStorage.getItem('hungvang_best') || '0', 10) || 0; } catch (e) {}
 
   function reset() {
-    score = 0; lives = 3; level = 1; items = []; floats = []; fireworks = []; levelMsg = 0; spawnTimer = 0.4; shake = 0; flash = 0;
+    score = 0; lives = 3; level = 1; items = []; floats = []; fireworks = []; levelMsg = 0; spawnTimer = 0.4; shake = 0; flash = 0; lastThemeIdx = -1;
     player.x = player.target = LW / 2;
     updateHud();
   }
@@ -241,7 +241,7 @@
   // ---------- update ----------
   function update(dt) {
     time += dt;
-    updateStars(dt);
+    updateWeather(dt);
     if (state !== 'play') return;
 
     player.x += (player.target - player.x) * Math.min(1, dt * 16);
@@ -349,96 +349,192 @@
     overScreen.hidden = false;
   }
 
-  // ---------- stars ----------
-  var stars = [];
-  function initStars() {
-    stars = [];
-    for (var i = 0; i < 120; i++) {
-      stars.push({
-        x: Math.random() * LW,
-        y: Math.random() * LH,
-        r: 0.4 + Math.random() * 1.8,
-        speed: 8 + Math.random() * 25,
-        twinkleSpeed: 1.5 + Math.random() * 3,
-        twinkleOffset: Math.random() * 6.28,
-        brightness: 0.4 + Math.random() * 0.6
-      });
-    }
-    // a few shooting stars
-    for (var j = 0; j < 3; j++) {
-      stars.push({
-        x: Math.random() * LW,
-        y: Math.random() * LH * 0.5,
-        r: 1.2,
-        speed: 80 + Math.random() * 60,
-        twinkleSpeed: 0,
-        twinkleOffset: 0,
-        brightness: 1,
-        shooting: true,
-        vx: -30 - Math.random() * 40,
-        tail: 20 + Math.random() * 15
-      });
+  // ========== WEATHER / THEME SYSTEM ==========
+  // Themes cycle: 1=Starry Night, 2=Rain, 3=Snow, 4=Sunset, 5=Thunderstorm,
+  //               6=Cherry Blossom, 7=Sandstorm, 8=Aurora, then repeat
+  var themes = [
+    { name:'Đêm sao',     sky:['#05101a','#0a1a2e','#0c2a2b','#1b5a4e'], moon:true,  weatherType:'stars' },
+    { name:'Mưa rào',      sky:['#1a2a3a','#2a3a4a','#3a4a55','#2a3a3a'], moon:false, weatherType:'rain' },
+    { name:'Tuyết rơi',    sky:['#c8d6e5','#dfe6ed','#eef2f7','#f0f4f8'], moon:false, weatherType:'snow' },
+    { name:'Hoàng hôn',    sky:['#1a0533','#6b1839','#c74b2a','#f2a541'], moon:false, weatherType:'none' },
+    { name:'Giông bão',    sky:['#0d1117','#1a1f2e','#252b3a','#1a2028'], moon:false, weatherType:'thunder' },
+    { name:'Hoa anh đào',  sky:['#2d1b3d','#4a2050','#d4729a','#f8c8dc'], moon:false, weatherType:'petals' },
+    { name:'Bão cát',      sky:['#5c4a32','#8b7355','#c4a56e','#d4b87a'], moon:false, weatherType:'sand' },
+    { name:'Cực quang',    sky:['#050a18','#0a1225','#0c1a30','#101828'], moon:true,  weatherType:'aurora' }
+  ];
+  function getTheme() { return themes[((level - 1) % themes.length)]; }
+
+  // weather particles (shared pool, re-inited on level change)
+  var wParts = [], lastThemeIdx = -1, lightning = 0;
+
+  function initWeather() {
+    var idx = (level - 1) % themes.length;
+    if (idx === lastThemeIdx) return;
+    lastThemeIdx = idx;
+    wParts = [];
+    var th = themes[idx];
+    if (th.weatherType === 'stars') {
+      for (var i = 0; i < 120; i++) wParts.push({ x:Math.random()*LW, y:Math.random()*LH, r:0.4+Math.random()*1.8, sp:8+Math.random()*25, tw:1.5+Math.random()*3, to:Math.random()*6.28, br:0.4+Math.random()*0.6 });
+      for (var j = 0; j < 3; j++) wParts.push({ x:Math.random()*LW, y:Math.random()*LH*0.5, r:1.2, sp:80+Math.random()*60, tw:0, to:0, br:1, shoot:true, vx:-30-Math.random()*40, tail:20+Math.random()*15 });
+    } else if (th.weatherType === 'rain') {
+      for (var i = 0; i < 200; i++) wParts.push({ x:Math.random()*LW, y:Math.random()*LH, sp:400+Math.random()*300, len:12+Math.random()*18, w:0.8+Math.random()*0.7 });
+    } else if (th.weatherType === 'snow') {
+      for (var i = 0; i < 100; i++) wParts.push({ x:Math.random()*LW, y:Math.random()*LH, r:1.5+Math.random()*3, sp:20+Math.random()*40, drift:Math.random()*6.28, dsp:0.5+Math.random()*1.5 });
+    } else if (th.weatherType === 'thunder') {
+      for (var i = 0; i < 180; i++) wParts.push({ x:Math.random()*LW, y:Math.random()*LH, sp:500+Math.random()*350, len:14+Math.random()*20, w:1+Math.random()*0.8 });
+    } else if (th.weatherType === 'petals') {
+      for (var i = 0; i < 60; i++) wParts.push({ x:Math.random()*LW, y:Math.random()*LH, r:3+Math.random()*4, sp:25+Math.random()*35, drift:Math.random()*6.28, dsp:1+Math.random()*2, rot:Math.random()*6.28, rspin:1+Math.random()*2 });
+    } else if (th.weatherType === 'sand') {
+      for (var i = 0; i < 150; i++) wParts.push({ x:Math.random()*LW, y:Math.random()*LH, r:1+Math.random()*2, sp:15+Math.random()*30, vx:60+Math.random()*80, alpha:0.2+Math.random()*0.4 });
+    } else if (th.weatherType === 'aurora') {
+      for (var i = 0; i < 80; i++) wParts.push({ x:Math.random()*LW, y:Math.random()*LH, r:0.4+Math.random()*1.8, sp:8+Math.random()*20, tw:1.5+Math.random()*3, to:Math.random()*6.28, br:0.4+Math.random()*0.6 });
     }
   }
-  initStars();
+  function updateWeather(dt) {
+    initWeather(); // check if theme changed
+    var th = getTheme();
+    if (th.weatherType === 'stars' || th.weatherType === 'aurora') {
+      for (var i = 0; i < wParts.length; i++) { var p=wParts[i]; p.y+=p.sp*dt; if(p.shoot){p.x+=p.vx*dt; if(p.y>LH+10||p.x<-50){p.x=LW*0.3+Math.random()*LW*0.7;p.y=-10-Math.random()*50;}} else if(p.y>LH+5){p.y=-5;p.x=Math.random()*LW;} }
+    } else if (th.weatherType === 'rain' || th.weatherType === 'thunder') {
+      for (var i = 0; i < wParts.length; i++) { var p=wParts[i]; p.y+=p.sp*dt; p.x-=30*dt; if(p.y>LH+20){p.y=-20;p.x=Math.random()*LW;} if(p.x<-10)p.x=LW+5; }
+      if (th.weatherType === 'thunder') { lightning -= dt; if (lightning <= 0 && Math.random() < 0.005) lightning = 0.08 + Math.random() * 0.12; }
+    } else if (th.weatherType === 'snow') {
+      for (var i = 0; i < wParts.length; i++) { var p=wParts[i]; p.y+=p.sp*dt; p.drift+=p.dsp*dt; p.x+=Math.sin(p.drift)*0.8; if(p.y>LH+10){p.y=-10;p.x=Math.random()*LW;} }
+    } else if (th.weatherType === 'petals') {
+      for (var i = 0; i < wParts.length; i++) { var p=wParts[i]; p.y+=p.sp*dt; p.drift+=p.dsp*dt; p.x+=Math.sin(p.drift)*1.2+15*dt; p.rot+=p.rspin*dt; if(p.y>LH+10||p.x>LW+20){p.y=-10;p.x=Math.random()*LW;} }
+    } else if (th.weatherType === 'sand') {
+      for (var i = 0; i < wParts.length; i++) { var p=wParts[i]; p.y+=p.sp*dt; p.x+=p.vx*dt; if(p.x>LW+10){p.x=-10;p.y=Math.random()*LH;} if(p.y>LH+5){p.y=-5;} }
+    }
+  }
 
   // ---------- draw ----------
   function drawBackground() {
+    var th = getTheme();
     // sky gradient
     var g = ctx.createLinearGradient(0, 0, 0, LH);
-    g.addColorStop(0, '#05101a');
-    g.addColorStop(0.4, '#0a1a2e');
-    g.addColorStop(0.75, '#0c2a2b');
-    g.addColorStop(1, '#1b5a4e');
+    for (var i = 0; i < th.sky.length; i++) g.addColorStop(i / (th.sky.length - 1), th.sky[i]);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, LW, LH);
 
-    // stars
-    for (var i = 0; i < stars.length; i++) {
-      var s = stars[i];
-      if (s.shooting) {
-        // shooting star
-        var alpha = 0.3 + Math.abs(Math.sin(time * 0.4 + i)) * 0.7;
-        if (alpha < 0.35) continue; // hidden most of the time
+    // aurora bands
+    if (th.weatherType === 'aurora') {
+      for (var b = 0; b < 4; b++) {
         ctx.save();
-        var sg = ctx.createLinearGradient(s.x, s.y, s.x + s.tail, s.y - s.tail * 0.3);
-        sg.addColorStop(0, 'rgba(255,255,255,' + alpha + ')');
-        sg.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.strokeStyle = sg;
-        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.12 + Math.sin(time * 0.3 + b * 1.5) * 0.06;
+        var colors = ['#00ff87','#7fdbff','#c792ea','#51e898'];
+        ctx.strokeStyle = colors[b];
+        ctx.lineWidth = 25 + Math.sin(time * 0.5 + b) * 10;
         ctx.beginPath();
-        ctx.moveTo(s.x, s.y);
-        ctx.lineTo(s.x + s.tail, s.y - s.tail * 0.3);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
-        ctx.beginPath(); ctx.arc(s.x, s.y, 1.5, 0, 6.283); ctx.fill();
-        ctx.restore();
-      } else {
-        // twinkling star
-        var tw = Math.sin(time * s.twinkleSpeed + s.twinkleOffset) * 0.4 + 0.6;
-        var alpha2 = s.brightness * tw;
-        ctx.fillStyle = 'rgba(255,255,255,' + alpha2 + ')';
-        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 6.283); ctx.fill();
-        // glow for bigger stars
-        if (s.r > 1.2) {
-          ctx.fillStyle = 'rgba(200,220,255,' + (alpha2 * 0.2) + ')';
-          ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 3, 0, 6.283); ctx.fill();
+        for (var x = 0; x <= LW; x += 6) {
+          var y = 80 + b * 50 + Math.sin(x * 0.015 + time * 0.8 + b * 2) * 40 + Math.sin(x * 0.03 + time * 1.2) * 15;
+          if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
-    // moon
-    ctx.fillStyle = 'rgba(246,239,224,.85)';
-    ctx.beginPath(); ctx.arc(280, 80, 28, 0, 6.283); ctx.fill();
-    ctx.fillStyle = '#0a1a2e';
-    ctx.beginPath(); ctx.arc(291, 73, 25, 0, 6.283); ctx.fill();
-    // moon glow
-    ctx.fillStyle = 'rgba(246,239,224,.06)';
-    ctx.beginPath(); ctx.arc(280, 80, 55, 0, 6.283); ctx.fill();
+    // sunset glow
+    if (th.name === 'Hoàng hôn') {
+      ctx.save();
+      // sun
+      var sunY = 180 + Math.sin(time * 0.15) * 10;
+      var sg = ctx.createRadialGradient(LW/2, sunY, 20, LW/2, sunY, 160);
+      sg.addColorStop(0, 'rgba(255,200,50,.7)');
+      sg.addColorStop(0.3, 'rgba(255,120,30,.25)');
+      sg.addColorStop(1, 'rgba(255,60,0,0)');
+      ctx.fillStyle = sg;
+      ctx.fillRect(0, 0, LW, LH);
+      ctx.fillStyle = '#ffe066';
+      ctx.beginPath(); ctx.arc(LW/2, sunY, 26, 0, 6.283); ctx.fill();
+      ctx.restore();
+      // clouds
+      ctx.fillStyle = 'rgba(60,20,40,.2)';
+      for (var c = 0; c < 5; c++) {
+        var cx2 = ((c * 90 + time * 8) % (LW + 100)) - 50;
+        var cy2 = 60 + c * 40 + Math.sin(c * 2.1) * 20;
+        ctx.beginPath(); ctx.ellipse(cx2, cy2, 50+c*8, 14+c*3, 0, 0, 6.283); ctx.fill();
+      }
+    }
 
-    // water lines
-    ctx.strokeStyle = 'rgba(246,239,224,.10)';
-    ctx.lineWidth = 1.5;
+    // draw weather particles
+    if (th.weatherType === 'stars' || th.weatherType === 'aurora') {
+      for (var i = 0; i < wParts.length; i++) {
+        var s = wParts[i];
+        if (s.shoot) {
+          var a = 0.3+Math.abs(Math.sin(time*0.4+i))*0.7;
+          if(a<0.35) continue;
+          ctx.save();
+          var lg=ctx.createLinearGradient(s.x,s.y,s.x+s.tail,s.y-s.tail*0.3);
+          lg.addColorStop(0,'rgba(255,255,255,'+a+')'); lg.addColorStop(1,'rgba(255,255,255,0)');
+          ctx.strokeStyle=lg; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(s.x,s.y); ctx.lineTo(s.x+s.tail,s.y-s.tail*0.3); ctx.stroke();
+          ctx.fillStyle='rgba(255,255,255,'+a+')'; ctx.beginPath(); ctx.arc(s.x,s.y,1.5,0,6.283); ctx.fill();
+          ctx.restore();
+        } else {
+          var tw2=Math.sin(time*s.tw+s.to)*0.4+0.6, a2=s.br*tw2;
+          ctx.fillStyle='rgba(255,255,255,'+a2+')'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,6.283); ctx.fill();
+          if(s.r>1.2){ctx.fillStyle='rgba(200,220,255,'+(a2*0.2)+')'; ctx.beginPath(); ctx.arc(s.x,s.y,s.r*3,0,6.283); ctx.fill();}
+        }
+      }
+    } else if (th.weatherType === 'rain' || th.weatherType === 'thunder') {
+      ctx.strokeStyle = th.weatherType==='thunder' ? 'rgba(180,200,220,.4)' : 'rgba(180,210,240,.35)';
+      for (var i = 0; i < wParts.length; i++) {
+        var p = wParts[i];
+        ctx.lineWidth = p.w;
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 3, p.y + p.len); ctx.stroke();
+      }
+      // lightning flash
+      if (lightning > 0) {
+        ctx.save(); ctx.fillStyle = 'rgba(220,230,255,' + (lightning * 4) + ')'; ctx.fillRect(0,0,LW,LH);
+        // bolt
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        var bx = 80 + Math.random() * (LW - 160), by = 0;
+        ctx.moveTo(bx, by);
+        for (var s = 0; s < 6; s++) { bx += (Math.random()-0.5)*40; by += 40+Math.random()*50; ctx.lineTo(bx, by); }
+        ctx.stroke();
+        ctx.restore();
+      }
+    } else if (th.weatherType === 'snow') {
+      for (var i = 0; i < wParts.length; i++) {
+        var p = wParts[i];
+        ctx.fillStyle = 'rgba(255,255,255,.7)';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
+      }
+    } else if (th.weatherType === 'petals') {
+      for (var i = 0; i < wParts.length; i++) {
+        var p = wParts[i];
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = 'rgba(255,180,200,.55)';
+        ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * 0.5, 0, 0, 6.283); ctx.fill();
+        ctx.fillStyle = 'rgba(255,220,230,.3)';
+        ctx.beginPath(); ctx.ellipse(1, -1, p.r*0.6, p.r*0.3, 0.5, 0, 6.283); ctx.fill();
+        ctx.restore();
+      }
+    } else if (th.weatherType === 'sand') {
+      for (var i = 0; i < wParts.length; i++) {
+        var p = wParts[i];
+        ctx.fillStyle = 'rgba(210,185,140,' + p.alpha + ')';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
+      }
+      // haze overlay
+      ctx.fillStyle = 'rgba(180,160,120,.08)';
+      ctx.fillRect(0, 0, LW, LH);
+    }
+
+    // moon (only for themes with moon)
+    if (th.moon) {
+      ctx.fillStyle = 'rgba(246,239,224,.85)';
+      ctx.beginPath(); ctx.arc(280, 80, 28, 0, 6.283); ctx.fill();
+      ctx.fillStyle = th.sky[0];
+      ctx.beginPath(); ctx.arc(291, 73, 25, 0, 6.283); ctx.fill();
+      ctx.fillStyle = 'rgba(246,239,224,.06)';
+      ctx.beginPath(); ctx.arc(280, 80, 55, 0, 6.283); ctx.fill();
+    }
+
+    // ground / water
+    var gndCol = th.name==='Tuyết rơi' ? 'rgba(200,215,230,.15)' : th.name==='Bão cát' ? 'rgba(160,140,100,.15)' : 'rgba(246,239,224,.10)';
+    ctx.strokeStyle = gndCol; ctx.lineWidth = 1.5;
     for (var row = 0; row < 5; row++) {
       var wy = LH - 55 + row * 13;
       ctx.beginPath();
@@ -448,25 +544,14 @@
       }
       ctx.stroke();
     }
-  }
 
-  function updateStars(dt) {
-    for (var i = 0; i < stars.length; i++) {
-      var s = stars[i];
-      s.y += s.speed * dt;
-      if (s.shooting) {
-        s.x += s.vx * dt;
-        if (s.y > LH + 10 || s.x < -50) {
-          s.x = LW * 0.3 + Math.random() * LW * 0.7;
-          s.y = -10 - Math.random() * 50;
-        }
-      } else {
-        if (s.y > LH + 5) {
-          s.y = -5;
-          s.x = Math.random() * LW;
-        }
-      }
-    }
+    // theme name label (top center, subtle)
+    ctx.save();
+    ctx.fillStyle = 'rgba(246,239,224,.2)';
+    ctx.font = '500 10px "Be Vietnam Pro", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(th.name, LW / 2, LH - 12);
+    ctx.restore();
   }
 
   function drawBasket() {
@@ -597,10 +682,19 @@
     ctx.globalAlpha = alpha;
 
     // banner background
-    var bh = 70, by = LH * 0.32;
+    var bh = 70, by = LH * 0.32, bx = 30, bw = LW - 60, br = 16;
     ctx.fillStyle = 'rgba(0,0,0,.55)';
     ctx.beginPath();
-    ctx.roundRect(30, by, LW - 60, bh, 16);
+    ctx.moveTo(bx + br, by);
+    ctx.lineTo(bx + bw - br, by);
+    ctx.arcTo(bx + bw, by, bx + bw, by + br, br);
+    ctx.lineTo(bx + bw, by + bh - br);
+    ctx.arcTo(bx + bw, by + bh, bx + bw - br, by + bh, br);
+    ctx.lineTo(bx + br, by + bh);
+    ctx.arcTo(bx, by + bh, bx, by + bh - br, br);
+    ctx.lineTo(bx, by + br);
+    ctx.arcTo(bx, by, bx + br, by, br);
+    ctx.closePath();
     ctx.fill();
 
     // level up text
@@ -658,7 +752,7 @@
 
   // ---------- loop ----------
   var last = performance.now();
-  time = 0; items = []; floats = []; score = 0; lives = 3; level = 1; shake = 0; flash = 0; spawnTimer = 0;
+  time = 0; items = []; floats = []; fireworks = []; levelMsg = 0; score = 0; lives = 3; level = 1; shake = 0; flash = 0; spawnTimer = 0; lastThemeIdx = -1;
   function frame(now) {
     var dt = Math.min(0.033, (now - last) / 1000);
     last = now;
