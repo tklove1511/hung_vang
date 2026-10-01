@@ -223,7 +223,7 @@
       x: r + Math.random() * (LW - 2 * r),
       y: -r,
       r: r,
-      vy: (150 + Math.random() * 40) * Math.pow(1.02, level - 1),
+      vy: (150 + Math.random() * 40) * Math.pow(1.05, level - 1),
       rot: Math.random() * 6.28,
       spin: (Math.random() - 0.5) * 3,
       pts: []
@@ -276,7 +276,7 @@
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawn();
-      spawnTimer = Math.max(0.25, 0.85 / Math.pow(1.02, level - 1)) * (0.7 + Math.random() * 0.6);
+      spawnTimer = Math.max(0.25, 0.85 / Math.pow(1.05, level - 1)) * (0.7 + Math.random() * 0.6);
     }
 
     // meteor: random chance every 8-15 seconds
