@@ -155,7 +155,7 @@
   try { best = parseInt(localStorage.getItem('hungvang_best') || '0', 10) || 0; } catch (e) {}
 
   function reset() {
-    score = 0; lives = 3; level = 1; items = []; floats = []; fireworks = []; levelMsg = 0; spawnTimer = 0.4; shake = 0; flash = 0; lastThemeIdx = -1;
+    score = 0; lives = 3; level = 1; items = []; floats = []; fireworks = []; levelMsg = 0; spawnTimer = 0.4; meteorTimer = 10; shake = 0; flash = 0; lastThemeIdx = -1;
     player.x = player.target = LW / 2;
     updateHud();
   }
@@ -199,6 +199,7 @@
   }
 
   // ---------- spawn ----------
+  var meteorTimer = 0;
   function spawn() {
     var rockChance = Math.min(0.42, 0.2 + level * 0.02);
     var roll = Math.random();
@@ -238,6 +239,30 @@
     items.push(it);
   }
 
+  function spawnMeteor() {
+    var r = 40 + Math.random() * 25; // siêu to: 40-65px
+    var n = 10 + Math.floor(Math.random() * 4);
+    var pts = [];
+    for (var i = 0; i < n; i++) {
+      var a = (i / n) * 6.28;
+      var rr = r * (0.75 + Math.random() * 0.3);
+      pts.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
+    items.push({
+      type: 'meteor',
+      x: r + Math.random() * (LW - 2 * r),
+      y: -r * 2,
+      r: r,
+      vy: 80 + Math.random() * 40,
+      rot: Math.random() * 6.28,
+      spin: (Math.random() - 0.5) * 1.5,
+      pts: pts
+    });
+    // warning sound
+    beep(80, 0.5, 'sawtooth', 0.1);
+    setTimeout(function(){ beep(60, 0.4, 'sawtooth', 0.08); }, 200);
+  }
+
   // ---------- update ----------
   function update(dt) {
     time += dt;
@@ -254,15 +279,24 @@
       spawnTimer = Math.max(0.25, 0.85 / Math.pow(1.02, level - 1)) * (0.7 + Math.random() * 0.6);
     }
 
+    // meteor: random chance every 8-15 seconds
+    meteorTimer -= dt;
+    if (meteorTimer <= 0) {
+      if (Math.random() < 0.35) spawnMeteor(); // 35% chance each cycle
+      meteorTimer = 8 + Math.random() * 7;
+    }
+
     for (var i = items.length - 1; i >= 0; i--) {
       var it = items[i];
       it.y += it.vy * dt;
       it.rot += it.spin * dt;
 
-      var inX = Math.abs(it.x - player.x) < player.w / 2 + it.r * 0.2;
+      // meteor has wider hitbox
+      var hitR = it.type === 'meteor' ? it.r * 0.6 : it.r * 0.2;
+      var inX = Math.abs(it.x - player.x) < player.w / 2 + hitR;
       var inY = it.y + it.r > player.y && it.y < player.y + 22;
       if (inX && inY) {
-        if (it.type !== 'rock') {
+        if (it.type !== 'rock' && it.type !== 'meteor') {
           var pts = it.type === 'diamond' ? 100 : it.type === 'gold' ? 50 : 10;
           score += pts;
           var nl = calcLevel(score);
@@ -277,6 +311,12 @@
           else beep(880, 0.08, 'sine', 0.06);
           // floating score text
           floats.push({ x: it.x, y: it.y, text: '+' + pts, life: 0.7, color: it.type === 'diamond' ? '#7fdbff' : it.type === 'gold' ? '#f2a541' : '#d0d0d0' });
+        } else if (it.type === 'meteor') {
+          lives = Math.max(0, lives - 2);
+          shake = 0.6; flash = 0.5;
+          beep(60, 0.5, 'sawtooth', 0.12);
+          beep(40, 0.6, 'square', 0.08);
+          floats.push({ x: it.x, y: it.y, text: '-2 ♥', life: 1, color: '#ff4444' });
         } else {
           lives--;
           shake = 0.3; flash = 0.25;
@@ -640,6 +680,68 @@
     ctx.restore();
   }
 
+  function drawMeteor(it) {
+    ctx.save();
+    ctx.translate(it.x, it.y);
+    ctx.rotate(it.rot);
+    // fire trail
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    for (var t = 1; t <= 4; t++) {
+      var tr = it.r * (0.6 + t * 0.15);
+      var colors = ['#ff4500','#ff6b00','#ff8c00','#ffa500'];
+      ctx.fillStyle = colors[t-1];
+      ctx.globalAlpha = 0.3 / t;
+      ctx.beginPath(); ctx.arc(0, -it.r * 0.3 * t, tr * 0.7, 0, 6.283); ctx.fill();
+    }
+    ctx.restore();
+    // glow
+    ctx.shadowColor = '#ff4500'; ctx.shadowBlur = 20;
+    // body
+    var g = ctx.createRadialGradient(0, 0, 0, 0, 0, it.r);
+    g.addColorStop(0, '#8B4513');
+    g.addColorStop(0.4, '#654321');
+    g.addColorStop(0.7, '#4a3020');
+    g.addColorStop(1, '#2a1a10');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    for (var i = 0; i < it.pts.length; i++) {
+      var p = it.pts[i];
+      if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // cracks (lava lines)
+    ctx.strokeStyle = '#ff4500'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6;
+    for (var j = 0; j < 4; j++) {
+      var a1 = j * 1.57;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a1) * it.r * 0.7, Math.sin(a1) * it.r * 0.7);
+      ctx.stroke();
+    }
+    // danger border
+    ctx.strokeStyle = '#c8402f'; ctx.lineWidth = 3; ctx.globalAlpha = 0.5 + Math.sin(time * 10) * 0.3;
+    ctx.beginPath();
+    for (var i = 0; i < it.pts.length; i++) {
+      var p = it.pts[i];
+      if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+    // warning icon above
+    if (it.y < 80) {
+      ctx.save();
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+      ctx.globalAlpha = 0.5 + Math.sin(time * 8) * 0.5;
+      ctx.fillText('⚠', it.x, 30);
+      ctx.restore();
+    }
+  }
+
   function drawFloats() {
     for (var i = 0; i < floats.length; i++) {
       var f = floats[i];
@@ -737,6 +839,7 @@
       if (t === 'silver') drawSilver(items[i]);
       else if (t === 'gold') drawGold(items[i]);
       else if (t === 'diamond') drawDiamond(items[i]);
+      else if (t === 'meteor') drawMeteor(items[i]);
       else drawRock(items[i]);
     }
     drawBasket();
