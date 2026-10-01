@@ -187,8 +187,8 @@
   }
 
   // ---------- level thresholds ----------
-  // lv1: 1000, lv2: 2000, lv3: 4000, lv4: 8000 ...
-  function pointsForLevel(lv) { return 1000 * Math.pow(2, lv - 1); }
+  // lv1: 1000, lv2: 3000, lv3: 5000, lv4: 7000 ... (+2000 mỗi lv từ lv2)
+  function pointsForLevel(lv) { return lv === 1 ? 1000 : 1000 + (lv - 1) * 2000; }
   function calcLevel(pts) {
     var lv = 1, total = 0;
     while (true) {
@@ -222,7 +222,7 @@
       x: r + Math.random() * (LW - 2 * r),
       y: -r,
       r: r,
-      vy: (150 + Math.random() * 40) * Math.pow(1.03, level - 1),
+      vy: (150 + Math.random() * 40) * Math.pow(1.02, level - 1),
       rot: Math.random() * 6.28,
       spin: (Math.random() - 0.5) * 3,
       pts: []
@@ -251,7 +251,7 @@
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawn();
-      spawnTimer = Math.max(0.25, 0.85 / Math.pow(1.03, level - 1)) * (0.7 + Math.random() * 0.6);
+      spawnTimer = Math.max(0.25, 0.85 / Math.pow(1.02, level - 1)) * (0.7 + Math.random() * 0.6);
     }
 
     for (var i = items.length - 1; i >= 0; i--) {
